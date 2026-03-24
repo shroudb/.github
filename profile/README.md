@@ -16,7 +16,7 @@ The core server. Manages JWT signing keys, API keys, HMAC secrets, refresh token
 - **Encrypted at rest** — AES-256-GCM with per-keyspace HKDF-derived keys
 - **Durable** — Write-ahead log with periodic snapshots, CRC32 integrity checks, crash recovery
 - **Observable** — Prometheus metrics, structured JSON audit logging, webhook notifications
-- **Deployable** — Docker (distroless), Helm charts, systemd
+- **Deployable** — Docker (`shroudb/shroudb`), Homebrew, static binaries, Helm charts, systemd
 
 ### [`shroudb-transit`](https://github.com/shroudb/shroudb-transit) — Encryption as a Service
 
@@ -58,6 +58,33 @@ Generates typed client SDKs from TOML spec files for both the RESP3 wire protoco
 
 ---
 
+## Install
+
+### Homebrew
+
+```sh
+brew tap shroudb/tap
+brew install shroudb           # credential vault + CLI
+brew install shroudb-transit   # encryption-as-a-service + CLI
+brew install shroudb-auth      # authentication server
+```
+
+### Docker
+
+```sh
+docker pull shroudb/shroudb       # credential vault
+docker pull shroudb/transit       # encryption-as-a-service
+docker pull shroudb/auth          # authentication server
+```
+
+CLI images: `shroudb/cli`, `shroudb/transit-cli`
+
+### Binary
+
+Prebuilt static binaries for Linux (x86_64, aarch64) and macOS (x86_64, Apple Silicon) are available on each repository's [Releases](https://github.com/shroudb) page.
+
+---
+
 ## Design Principles
 
 | Principle | How |
@@ -70,7 +97,7 @@ Generates typed client SDKs from TOML spec files for both the RESP3 wire protoco
 
 ## Tech Stack
 
-**Rust** · Tokio · Ring · AES-256-GCM · HKDF-SHA256 · RESP3 · Axum · Prometheus · Docker (distroless)
+**Rust** · Tokio · Ring · AES-256-GCM · HKDF-SHA256 · RESP3 · Axum · Prometheus · Docker · Homebrew
 
 ## License
 
