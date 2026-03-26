@@ -2,20 +2,20 @@
 
 **Encrypted credential management, transit encryption, and authentication — built in Rust.**
 
-ShrouDB is a suite of security-focused servers designed for applications that need centralized, encrypted-at-rest credential storage, encryption-as-a-service, and turnkey authentication. Every component is written in Rust, ships as a single static binary, and communicates over the RESP3 wire protocol with TLS/mTLS support.
+ShrouDB is a suite of security-focused servers designed for applications that need centralized, encrypted-at-rest credential storage, encryption-as-a-service, and turnkey authentication. Every component is written in Rust, ships as a single static binary, and communicates over a TCP wire protocol with TLS/mTLS support.
 
 ---
 
 ## Repositories
 
-### [`shroudb`](https://github.com/shroudb/shroudb) — Credential Vault
+### [`shroudb`](https://github.com/shroudb/shroudb) — Credential Engine
 
 The core server. Manages JWT signing keys, API keys, HMAC secrets, refresh tokens, and passwords with automatic key rotation, encrypted WAL-based storage, and a Pub/Sub event system.
 
 - **5 credential types** — JWT (ES256, RS256, EdDSA, …), API Key, HMAC, Refresh Token, Password (Argon2id/bcrypt/scrypt)
 - **Encrypted at rest** — AES-256-GCM with per-keyspace HKDF-derived keys
 - **Durable** — Write-ahead log with periodic snapshots, CRC32 integrity checks, crash recovery
-- **Observable** — Prometheus metrics, structured JSON audit logging, webhook notifications
+- **Observable** — Structured JSON audit logging, OpenTelemetry export, webhook notifications
 - **Deployable** — Docker (`shroudb/shroudb`), Homebrew, static binaries, Helm charts, systemd
 
 ### [`shroudb-transit`](https://github.com/shroudb/shroudb-transit) — Encryption as a Service
@@ -50,7 +50,7 @@ Three foundational crates consumed by all ShrouDB services:
 
 ### [`shroudb-codegen`](https://github.com/shroudb/shroudb-codegen) — SDK Code Generator
 
-Generates typed client SDKs from TOML spec files for both the RESP3 wire protocol and HTTP APIs.
+Generates typed client SDKs from TOML spec files for both the wire protocol and HTTP APIs.
 
 - **Languages** — Python, TypeScript, Go, Ruby, Protobuf/gRPC
 - **Dual mode** — Wire protocol clients and REST API clients from a single tool
@@ -64,7 +64,7 @@ Generates typed client SDKs from TOML spec files for both the RESP3 wire protoco
 
 ```sh
 brew tap shroudb/tap
-brew install shroudb           # credential vault + CLI
+brew install shroudb           # credential engine + CLI
 brew install shroudb-transit   # encryption-as-a-service + CLI
 brew install shroudb-auth      # authentication server
 ```
@@ -72,7 +72,7 @@ brew install shroudb-auth      # authentication server
 ### Docker
 
 ```sh
-docker pull shroudb/shroudb       # credential vault
+docker pull shroudb/shroudb       # credential engine
 docker pull shroudb/transit       # encryption-as-a-service
 docker pull shroudb/auth          # authentication server
 ```
@@ -97,7 +97,7 @@ Prebuilt static binaries for Linux (x86_64, aarch64) and macOS (x86_64, Apple Si
 
 ## Tech Stack
 
-**Rust** · Tokio · Ring · AES-256-GCM · HKDF-SHA256 · RESP3 · Axum · Prometheus · Docker · Homebrew
+**Rust** · Tokio · Ring · AES-256-GCM · HKDF-SHA256 · Axum · Docker · Homebrew
 
 ## License
 

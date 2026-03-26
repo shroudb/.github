@@ -15,6 +15,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
+  CARGO_HOME: /tmp/cargo-${{ github.run_id }}
+  RUSTUP_HOME: /tmp/rustup-${{ github.run_id }}
 
 jobs:
   fmt:
@@ -22,6 +24,10 @@ jobs:
     runs-on: [self-hosted, railway]
     steps:
       - uses: actions/checkout@v5
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - run: cargo fmt --all -- --check
 
   clippy:
@@ -29,13 +35,26 @@ jobs:
     runs-on: [self-hosted, railway]
     steps:
       - uses: actions/checkout@v5
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
         if: env.REGISTRY_TOKEN != ''
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << EOF
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" << EOF
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
@@ -48,13 +67,26 @@ jobs:
     runs-on: [self-hosted, railway]
     steps:
       - uses: actions/checkout@v5
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
         if: env.REGISTRY_TOKEN != ''
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << EOF
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" << EOF
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
@@ -68,16 +100,31 @@ jobs:
     runs-on: [self-hosted, railway]
     steps:
       - uses: actions/checkout@v5
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
         if: env.REGISTRY_TOKEN != ''
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << EOF
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" << EOF
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
           token = "${REGISTRY_TOKEN}"
           EOF
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --quiet 2>/dev/null || true
       - run: cargo deny check
