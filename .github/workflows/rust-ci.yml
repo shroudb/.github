@@ -1,0 +1,83 @@
+name: Rust CI
+
+on:
+  workflow_call:
+    inputs:
+      deny:
+        description: "Run cargo deny check"
+        type: boolean
+        default: true
+    secrets:
+      REGISTRY_TOKEN:
+        required: false
+        description: "Token for private crate registry"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: [self-hosted, railway]
+    steps:
+      - uses: actions/checkout@v5
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: [self-hosted, railway]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure registry
+        if: env.REGISTRY_TOKEN != ''
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          token = "${REGISTRY_TOKEN}"
+          EOF
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Test
+    runs-on: [self-hosted, railway]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure registry
+        if: env.REGISTRY_TOKEN != ''
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          token = "${REGISTRY_TOKEN}"
+          EOF
+      - run: cargo test --workspace
+
+  deny:
+    name: Dependency Check
+    if: ${{ inputs.deny }}
+    runs-on: [self-hosted, railway]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure registry
+        if: env.REGISTRY_TOKEN != ''
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          token = "${REGISTRY_TOKEN}"
+          EOF
+      - run: cargo deny check
