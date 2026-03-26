@@ -1,0 +1,278 @@
+name: Rust Release
+
+on:
+  workflow_call:
+    inputs:
+      product:
+        description: "Product name (e.g., mint, sentry, keep)"
+        type: string
+        required: true
+      server_package:
+        description: "Server crate package name (e.g., shroudb-mint-server)"
+        type: string
+        required: true
+      server_binary:
+        description: "Server binary name (e.g., shroudb-mint)"
+        type: string
+        required: true
+      cli_package:
+        description: "CLI crate package name (e.g., shroudb-mint-cli)"
+        type: string
+        required: true
+      cli_binary:
+        description: "CLI binary name (e.g., shroudb-mint-cli)"
+        type: string
+        required: true
+      docker_server_target:
+        description: "Dockerfile target for server (e.g., shroudb-mint)"
+        type: string
+        required: true
+      docker_cli_target:
+        description: "Dockerfile target for CLI (e.g., shroudb-mint-cli)"
+        type: string
+        required: true
+      crates:
+        description: "Comma-separated crate names to publish in order (e.g., shroudb-mint-core,shroudb-mint-protocol,shroudb-mint-client,shroudb-mint-server,shroudb-mint-cli)"
+        type: string
+        required: true
+    secrets:
+      REGISTRY_TOKEN:
+        required: true
+      GH_PAT:
+        required: false
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Set version from tag
+    runs-on: [self-hosted, railway]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION"
+
+  publish:
+    name: Publish crates
+    needs: [version]
+    runs-on: [self-hosted, railway]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        run: |
+          export CARGO_HOME="/tmp/cargo-${{ github.run_id }}"
+          export RUSTUP_HOME="/tmp/rustup-${{ github.run_id }}"
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+        env:
+          CARGO_HOME: /tmp/cargo-${{ github.run_id }}
+          RUSTUP_HOME: /tmp/rustup-${{ github.run_id }}
+      - name: Configure registry
+        run: |
+          mkdir -p "/tmp/cargo-${{ github.run_id }}"
+          cat > "/tmp/cargo-${{ github.run_id }}/config.toml" << EOF
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          token = "${{ secrets.REGISTRY_TOKEN }}"
+          EOF
+        env:
+          CARGO_HOME: /tmp/cargo-${{ github.run_id }}
+      - name: Patch version and publish
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          echo "Patching workspace version to $VERSION"
+
+          # Patch workspace version
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+
+          # Publish each crate in dependency order
+          IFS=',' read -ra CRATES <<< "${{ inputs.crates }}"
+          for crate in "${CRATES[@]}"; do
+            crate=$(echo "$crate" | xargs)  # trim whitespace
+            echo "Publishing $crate v$VERSION..."
+            cargo publish -p "$crate" --registry shroudb --allow-dirty 2>&1 || true
+            sleep 3  # allow registry indexing
+          done
+        env:
+          CARGO_HOME: /tmp/cargo-${{ github.run_id }}
+          RUSTUP_HOME: /tmp/rustup-${{ github.run_id }}
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: [version]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        run: |
+          rustup target add ${{ matrix.target }}
+          rustup component add clippy
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << EOF
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          token = "${{ secrets.REGISTRY_TOKEN }}"
+          EOF
+      - name: Install musl tools (Linux x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install cross (Linux aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin
+      - name: Build (cargo)
+        if: matrix.target != 'aarch64-unknown-linux-musl'
+        run: cargo build --release --target ${{ matrix.target }} -p ${{ inputs.server_package }} -p ${{ inputs.cli_package }}
+      - name: Build (cross)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: cross build --release --target ${{ matrix.target }} -p ${{ inputs.server_package }} -p ${{ inputs.cli_package }}
+      - name: Package
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ inputs.server_binary }}" dist/
+          cp "target/${{ matrix.target }}/release/${{ inputs.cli_binary }}" dist/
+          cd dist
+          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${{ matrix.target }}.tar.gz" \
+            "${{ inputs.server_binary }}" "${{ inputs.cli_binary }}"
+          rm "${{ inputs.server_binary }}" "${{ inputs.cli_binary }}"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*.tar.gz
+
+  docker-rc:
+    name: Docker RC (${{ matrix.image }})
+    if: contains(github.ref, '-rc')
+    needs: [version]
+    runs-on: [self-hosted, railway]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: ${{ inputs.product }}
+            target: ${{ inputs.docker_server_target }}
+          - image: ${{ inputs.product }}-cli
+            target: ${{ inputs.docker_cli_target }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and push
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --target "${{ matrix.target }}" \
+            --tag "ghcr.io/shroudb/${{ matrix.image }}:${{ github.ref_name }}" \
+            --push .
+
+  docker-release:
+    name: Docker Release (${{ matrix.image }})
+    if: "!contains(github.ref, '-rc')"
+    needs: [version]
+    runs-on: [self-hosted, railway]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: ${{ inputs.product }}
+            target: ${{ inputs.docker_server_target }}
+          - image: ${{ inputs.product }}-cli
+            target: ${{ inputs.docker_cli_target }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and push
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --target "${{ matrix.target }}" \
+            --tag "shroudb/${{ matrix.image }}:${{ github.ref_name }}" \
+            --tag "shroudb/${{ matrix.image }}:latest" \
+            --tag "ghcr.io/shroudb/${{ matrix.image }}:${{ github.ref_name }}" \
+            --tag "ghcr.io/shroudb/${{ matrix.image }}:latest" \
+            --push .
+
+  github-release:
+    name: GitHub Release
+    if: "!contains(github.ref, '-rc')"
+    needs: [build]
+    runs-on: [self-hosted, railway]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: release-*
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" artifacts/*.tar.gz \
+            --repo "${{ github.repository }}" \
+            --generate-notes
+
+  homebrew:
+    name: Update Homebrew
+    if: "!contains(github.ref, '-rc')"
+    needs: [github-release]
+    runs-on: [self-hosted, railway]
+    steps:
+      - name: Trigger formula update
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh api repos/shroudb/homebrew-tap/dispatches \
+            -f event_type=formula-update \
+            -f "client_payload[formula]=shroudb-${{ inputs.product }}" \
+            -f "client_payload[version]=$VERSION"
