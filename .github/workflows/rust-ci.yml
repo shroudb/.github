@@ -26,7 +26,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Rust
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - run: cargo fmt --all -- --check
 
@@ -37,7 +38,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Rust
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
         if: env.REGISTRY_TOKEN != ''
@@ -71,7 +73,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Rust
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
         if: env.REGISTRY_TOKEN != ''
@@ -106,7 +109,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Rust
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component rustfmt clippy
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
         if: env.REGISTRY_TOKEN != ''
