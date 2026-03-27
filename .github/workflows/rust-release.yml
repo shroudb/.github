@@ -77,7 +77,7 @@ jobs:
           for crate in "${CRATES[@]}"; do
             crate=$(echo "$crate" | xargs)
             echo "Publishing $crate..."
-            cargo publish -p "$crate" --registry shroudb --allow-dirty 2>&1
+            cargo publish -p "$crate" --registry shroudb --allow-dirty 2>&1 || echo "  (already published or failed, continuing)"
             sleep 5
           done
 
@@ -116,9 +116,11 @@ jobs:
 
           [registries.shroudb-cratesio]
           index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
 
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
           EOF
       - name: Install musl tools (Linux x86_64)
         if: matrix.target == 'x86_64-unknown-linux-musl'
