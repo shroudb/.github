@@ -81,50 +81,90 @@ jobs:
             sleep 5
           done
 
-  # ─── Step 3: Build binaries (self-hosted, Linux targets) ───
-  build:
-    name: Build (${{ matrix.target }})
+  # ─── Step 3: Build x86_64 binary (self-hosted) ───
+  build-x86:
+    name: Build (x86_64-unknown-linux-musl)
     needs: [check]
     runs-on: [self-hosted, railway]
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-musl
-            use_cross: false
-          - target: aarch64-unknown-linux-musl
-            use_cross: true
     steps:
       - uses: actions/checkout@v5
-      - name: Install target
-        run: rustup target add ${{ matrix.target }}
+      - name: Build
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          PACKAGES="-p ${{ inputs.server_package }}"
+          [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
+          cargo build --release --target x86_64-unknown-linux-musl $PACKAGES
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="x86_64-unknown-linux-musl"
+          mkdir -p dist
+          cp "target/$TARGET/release/${{ inputs.server_binary }}" dist/
+          BINARIES="${{ inputs.server_binary }}"
+          if [ -n "${{ inputs.cli_binary }}" ]; then
+            cp "target/$TARGET/release/${{ inputs.cli_binary }}" dist/ 2>/dev/null || true
+            [ -f "dist/${{ inputs.cli_binary }}" ] && BINARIES="$BINARIES ${{ inputs.cli_binary }}"
+          fi
+          cd dist
+          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${TARGET}.tar.gz" $BINARIES
+          rm -f $BINARIES
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-x86_64-unknown-linux-musl
+          path: dist/*.tar.gz
+
+  # ─── Step 3b: Build aarch64 binary (needs Docker for cross) ───
+  build-arm:
+    name: Build (aarch64-unknown-linux-musl)
+    needs: [check]
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRIES_SHROUDB_CRATESIO_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+      CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
       - name: Install cross
-        if: matrix.use_cross
-        run: cargo install cross --quiet 2>/dev/null || true
+        run: cargo install cross --quiet
       - name: Build
         run: |
           PACKAGES="-p ${{ inputs.server_package }}"
           [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} $PACKAGES
-          else
-            cargo build --release --target ${{ matrix.target }} $PACKAGES
-          fi
+          cross build --release --target aarch64-unknown-linux-musl $PACKAGES
       - name: Package
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="aarch64-unknown-linux-musl"
           mkdir -p dist
-          cp "target/${{ matrix.target }}/release/${{ inputs.server_binary }}" dist/
+          cp "target/$TARGET/release/${{ inputs.server_binary }}" dist/
           BINARIES="${{ inputs.server_binary }}"
           if [ -n "${{ inputs.cli_binary }}" ]; then
-            cp "target/${{ matrix.target }}/release/${{ inputs.cli_binary }}" dist/ 2>/dev/null || true
+            cp "target/$TARGET/release/${{ inputs.cli_binary }}" dist/ 2>/dev/null || true
             [ -f "dist/${{ inputs.cli_binary }}" ] && BINARIES="$BINARIES ${{ inputs.cli_binary }}"
           fi
           cd dist
-          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${{ matrix.target }}.tar.gz" $BINARIES
+          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${TARGET}.tar.gz" $BINARIES
           rm -f $BINARIES
       - uses: actions/upload-artifact@v5
         with:
-          name: release-${{ matrix.target }}
+          name: release-aarch64-unknown-linux-musl
           path: dist/*.tar.gz
 
   # ─── Step 4: Docker ───
@@ -173,7 +213,7 @@ jobs:
   github-release:
     name: GitHub Release
     if: "!contains(github.ref, '-rc')"
-    needs: [build]
+    needs: [build-x86, build-arm]
     runs-on: [self-hosted, railway]
     permissions:
       contents: write
