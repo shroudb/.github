@@ -132,43 +132,39 @@ jobs:
     name: Docker
     if: "!contains(github.ref, '-rc')"
     needs: [check]
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v5
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --name multiarch --driver docker-container
       - name: Build and push
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin 2>/dev/null || true
 
-          # Build server image
-          docker build \
+          # Build and push server image
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
             --target "${{ inputs.docker_server_target }}" \
             --tag "shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
             --tag "shroudb/${{ inputs.product }}:latest" \
             --tag "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
             --tag "ghcr.io/shroudb/${{ inputs.product }}:latest" \
-            .
-          docker push "shroudb/${{ inputs.product }}:${{ github.ref_name }}"
-          docker push "shroudb/${{ inputs.product }}:latest"
-          docker push "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}"
-          docker push "ghcr.io/shroudb/${{ inputs.product }}:latest"
+            --push .
 
-          # Build CLI image (if applicable)
+          # Build and push CLI image (if applicable)
           if [ -n "${{ inputs.docker_cli_target }}" ]; then
-            docker build \
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
               --target "${{ inputs.docker_cli_target }}" \
               --tag "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
               --tag "shroudb/${{ inputs.product }}-cli:latest" \
               --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
               --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:latest" \
-              .
-            docker push "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}"
-            docker push "shroudb/${{ inputs.product }}-cli:latest"
-            docker push "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}"
-            docker push "ghcr.io/shroudb/${{ inputs.product }}-cli:latest"
+              --push .
           fi
 
   # ─── Step 5: GitHub Release ───
