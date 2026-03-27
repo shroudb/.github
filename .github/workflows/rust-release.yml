@@ -150,7 +150,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v5
       - name: Set up Docker Buildx
@@ -159,8 +158,7 @@ jobs:
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin 2>/dev/null || true
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -172,8 +170,6 @@ jobs:
             --target "${{ inputs.docker_server_target }}" \
             --tag "shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
             --tag "shroudb/${{ inputs.product }}:latest" \
-            --tag "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
-            --tag "ghcr.io/shroudb/${{ inputs.product }}:latest" \
             --push .
 
           if [ -n "${{ inputs.docker_cli_target }}" ]; then
@@ -187,8 +183,6 @@ jobs:
               --target "${{ inputs.docker_cli_target }}" \
               --tag "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
               --tag "shroudb/${{ inputs.product }}-cli:latest" \
-              --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
-              --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:latest" \
               --push .
           fi
 
