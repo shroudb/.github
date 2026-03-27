@@ -54,6 +54,8 @@ jobs:
 
           [registries.shroudb-cratesio]
           index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          token = "${{ secrets.REGISTRY_TOKEN }}"
 
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
@@ -86,6 +88,8 @@ jobs:
 
           [registries.shroudb-cratesio]
           index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          token = "${{ secrets.REGISTRY_TOKEN }}"
 
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
@@ -119,6 +123,8 @@ jobs:
 
           [registries.shroudb-cratesio]
           index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          token = "${{ secrets.REGISTRY_TOKEN }}"
 
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
