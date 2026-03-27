@@ -81,65 +81,34 @@ jobs:
             sleep 5
           done
 
-  # ─── Step 3: Build binaries ───
+  # ─── Step 3: Build binaries (self-hosted, Linux targets) ───
   build:
     name: Build (${{ matrix.target }})
     needs: [check]
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, railway]
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
+            use_cross: false
           - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
-    env:
-      CARGO_REGISTRIES_SHROUDB_CRATESIO_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-      CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+            use_cross: true
     steps:
       - uses: actions/checkout@v5
-      - name: Install Rust target
+      - name: Install target
         run: rustup target add ${{ matrix.target }}
-      - name: Configure registry
-        run: |
-          mkdir -p ~/.cargo
-          cat > ~/.cargo/config.toml << 'EOF'
-          [source.crates-io]
-          replace-with = "shroudb-cratesio"
-
-          [source.shroudb-cratesio]
-          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-
-          [registries.shroudb-cratesio]
-          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-          credential-provider = ["cargo:token"]
-
-          [registries.shroudb]
-          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-          credential-provider = ["cargo:token"]
-          EOF
-      - name: Install musl tools (Linux x86_64)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Install cross (Linux aarch64)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin
-      - name: Build (cargo)
-        if: matrix.target != 'aarch64-unknown-linux-musl'
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --quiet 2>/dev/null || true
+      - name: Build
         run: |
           PACKAGES="-p ${{ inputs.server_package }}"
           [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
-          cargo build --release --target ${{ matrix.target }} $PACKAGES
-      - name: Build (cross)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: |
-          PACKAGES="-p ${{ inputs.server_package }}"
-          [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
-          cross build --release --target ${{ matrix.target }} $PACKAGES
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} $PACKAGES
+          else
+            cargo build --release --target ${{ matrix.target }} $PACKAGES
+          fi
       - name: Package
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
