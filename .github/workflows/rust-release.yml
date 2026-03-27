@@ -4,35 +4,38 @@ on:
   workflow_call:
     inputs:
       product:
-        description: "Product name (e.g., mint, sentry, keep)"
+        description: "Product name (e.g., mint, transit, auth)"
         type: string
         required: true
       server_package:
-        description: "Server crate package name (e.g., shroudb-mint-server)"
+        description: "Server crate package name"
         type: string
         required: true
       server_binary:
-        description: "Server binary name (e.g., shroudb-mint)"
+        description: "Server binary name"
         type: string
         required: true
       cli_package:
-        description: "CLI crate package name (e.g., shroudb-mint-cli)"
+        description: "CLI crate package name (empty if no CLI)"
         type: string
-        required: true
+        required: false
+        default: ""
       cli_binary:
-        description: "CLI binary name (e.g., shroudb-mint-cli)"
+        description: "CLI binary name (empty if no CLI)"
         type: string
-        required: true
+        required: false
+        default: ""
       docker_server_target:
-        description: "Dockerfile target for server (e.g., shroudb-mint)"
+        description: "Dockerfile target for server"
         type: string
         required: true
       docker_cli_target:
-        description: "Dockerfile target for CLI (e.g., shroudb-mint-cli)"
+        description: "Dockerfile target for CLI (empty if no CLI)"
         type: string
-        required: true
+        required: false
+        default: ""
       crates:
-        description: "Comma-separated crate names to publish in order (e.g., shroudb-mint-core,shroudb-mint-protocol,shroudb-mint-client,shroudb-mint-server,shroudb-mint-cli)"
+        description: "Comma-separated crate names to publish in order"
         type: string
         required: true
     secrets:
@@ -69,8 +72,6 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Rust
         run: |
-          export CARGO_HOME="/tmp/cargo-${{ github.run_id }}"
-          export RUSTUP_HOME="/tmp/rustup-${{ github.run_id }}"
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
         env:
@@ -78,8 +79,8 @@ jobs:
           RUSTUP_HOME: /tmp/rustup-${{ github.run_id }}
       - name: Configure registry
         run: |
-          mkdir -p "/tmp/cargo-${{ github.run_id }}"
-          cat > "/tmp/cargo-${{ github.run_id }}/config.toml" << EOF
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" << EOF
           [source.crates-io]
           replace-with = "shroudb-cratesio"
 
@@ -99,18 +100,14 @@ jobs:
       - name: Patch version and publish
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-          echo "Patching workspace version to $VERSION"
-
-          # Patch workspace version
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
 
-          # Publish each crate in dependency order
           IFS=',' read -ra CRATES <<< "${{ inputs.crates }}"
           for crate in "${CRATES[@]}"; do
-            crate=$(echo "$crate" | xargs)  # trim whitespace
+            crate=$(echo "$crate" | xargs)
             echo "Publishing $crate v$VERSION..."
             cargo publish -p "$crate" --registry shroudb --allow-dirty 2>&1 || true
-            sleep 3  # allow registry indexing
+            sleep 3
           done
         env:
           CARGO_HOME: /tmp/cargo-${{ github.run_id }}
@@ -136,7 +133,6 @@ jobs:
       - name: Install Rust
         run: |
           rustup target add ${{ matrix.target }}
-          rustup component add clippy
       - name: Configure registry
         run: |
           mkdir -p ~/.cargo
@@ -161,22 +157,31 @@ jobs:
       - name: Install cross (Linux aarch64)
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin
-      - name: Build (cargo)
+      - name: Build server (cargo)
         if: matrix.target != 'aarch64-unknown-linux-musl'
-        run: cargo build --release --target ${{ matrix.target }} -p ${{ inputs.server_package }} -p ${{ inputs.cli_package }}
-      - name: Build (cross)
+        run: |
+          PACKAGES="-p ${{ inputs.server_package }}"
+          [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
+          cargo build --release --target ${{ matrix.target }} $PACKAGES
+      - name: Build server (cross)
         if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: cross build --release --target ${{ matrix.target }} -p ${{ inputs.server_package }} -p ${{ inputs.cli_package }}
+        run: |
+          PACKAGES="-p ${{ inputs.server_package }}"
+          [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
+          cross build --release --target ${{ matrix.target }} $PACKAGES
       - name: Package
         run: |
           VERSION="${{ needs.version.outputs.version }}"
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/${{ inputs.server_binary }}" dist/
-          cp "target/${{ matrix.target }}/release/${{ inputs.cli_binary }}" dist/
+          BINARIES="${{ inputs.server_binary }}"
+          if [ -n "${{ inputs.cli_binary }}" ]; then
+            cp "target/${{ matrix.target }}/release/${{ inputs.cli_binary }}" dist/ 2>/dev/null || true
+            [ -f "dist/${{ inputs.cli_binary }}" ] && BINARIES="$BINARIES ${{ inputs.cli_binary }}"
+          fi
           cd dist
-          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${{ matrix.target }}.tar.gz" \
-            "${{ inputs.server_binary }}" "${{ inputs.cli_binary }}"
-          rm "${{ inputs.server_binary }}" "${{ inputs.cli_binary }}"
+          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${{ matrix.target }}.tar.gz" $BINARIES
+          rm -f $BINARIES
       - uses: actions/upload-artifact@v5
         with:
           name: release-${{ matrix.target }}
@@ -201,11 +206,13 @@ jobs:
             --target "${{ inputs.docker_server_target }}" \
             --tag "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
             --push .
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --target "${{ inputs.docker_cli_target }}" \
-            --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
-            --push .
+          if [ -n "${{ inputs.docker_cli_target }}" ]; then
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --target "${{ inputs.docker_cli_target }}" \
+              --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
+              --push .
+          fi
 
   docker-release:
     name: Docker Release
@@ -230,14 +237,16 @@ jobs:
             --tag "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
             --tag "ghcr.io/shroudb/${{ inputs.product }}:latest" \
             --push .
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --target "${{ inputs.docker_cli_target }}" \
-            --tag "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
-            --tag "shroudb/${{ inputs.product }}-cli:latest" \
-            --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
-            --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:latest" \
-            --push .
+          if [ -n "${{ inputs.docker_cli_target }}" ]; then
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --target "${{ inputs.docker_cli_target }}" \
+              --tag "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
+              --tag "shroudb/${{ inputs.product }}-cli:latest" \
+              --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
+              --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:latest" \
+              --push .
+          fi
 
   github-release:
     name: GitHub Release
