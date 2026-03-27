@@ -1,6 +1,9 @@
 FROM myoung34/github-runner:latest
 
-# Install build dependencies (don't touch Docker — base image handles DinD)
+# Patch Docker init script to remove ulimit call (Railway doesn't allow it)
+RUN sed -i 's/ulimit -n [0-9]*/true/' /etc/init.d/docker 2>/dev/null || true
+
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
       cmake build-essential pkg-config libssl-dev \
       musl-tools \
@@ -19,7 +22,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     && rm -rf /usr/local/cargo/registry/cache \
     && rustc --version && cargo --version && cargo deny --version
 
-# Install buildx plugin (base image has Docker but may not have buildx)
+# Install buildx plugin
 RUN mkdir -p /usr/local/lib/docker/cli-plugins \
     && curl -fsSL "https://github.com/docker/buildx/releases/download/v0.19.3/buildx-v0.19.3.linux-amd64" \
        -o /usr/local/lib/docker/cli-plugins/docker-buildx \
