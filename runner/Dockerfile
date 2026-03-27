@@ -1,9 +1,10 @@
 FROM myoung34/github-runner:latest
 
-# Install build dependencies for aws-lc-sys (needed by jsonwebtoken/ring)
+# Install build dependencies + Docker CLI + buildx
 RUN apt-get update && apt-get install -y --no-install-recommends \
       cmake build-essential pkg-config libssl-dev \
       musl-tools \
+      docker.io docker-buildx \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust stable with all components
