@@ -47,7 +47,7 @@ env:
   CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
 
 jobs:
-  # ─── Step 1: Checks must pass ───
+  # ─── Step 1: Checks ───
   check:
     name: Check
     runs-on: [self-hosted, railway]
@@ -63,14 +63,8 @@ jobs:
     name: Publish crates
     needs: [check]
     runs-on: [self-hosted, railway]
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
-      - id: version
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Publish
         run: |
           IFS=',' read -ra CRATES <<< "${{ inputs.crates }}"
@@ -81,90 +75,48 @@ jobs:
             sleep 5
           done
 
-  # ─── Step 3: Build x86_64 binary (self-hosted) ───
-  build-x86:
-    name: Build (x86_64-unknown-linux-musl)
+  # ─── Step 3: Build binaries ───
+  build:
+    name: Build (${{ matrix.target }})
     needs: [check]
     runs-on: [self-hosted, railway]
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            use_cross: false
+          - target: aarch64-unknown-linux-musl
+            use_cross: true
     steps:
       - uses: actions/checkout@v5
-      - name: Build
-        run: |
-          rustup target add x86_64-unknown-linux-musl
-          PACKAGES="-p ${{ inputs.server_package }}"
-          [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
-          cargo build --release --target x86_64-unknown-linux-musl $PACKAGES
-      - name: Package
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          TARGET="x86_64-unknown-linux-musl"
-          mkdir -p dist
-          cp "target/$TARGET/release/${{ inputs.server_binary }}" dist/
-          BINARIES="${{ inputs.server_binary }}"
-          if [ -n "${{ inputs.cli_binary }}" ]; then
-            cp "target/$TARGET/release/${{ inputs.cli_binary }}" dist/ 2>/dev/null || true
-            [ -f "dist/${{ inputs.cli_binary }}" ] && BINARIES="$BINARIES ${{ inputs.cli_binary }}"
-          fi
-          cd dist
-          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${TARGET}.tar.gz" $BINARIES
-          rm -f $BINARIES
-      - uses: actions/upload-artifact@v5
-        with:
-          name: release-x86_64-unknown-linux-musl
-          path: dist/*.tar.gz
-
-  # ─── Step 3b: Build aarch64 binary (needs Docker for cross) ───
-  build-arm:
-    name: Build (aarch64-unknown-linux-musl)
-    needs: [check]
-    runs-on: ubuntu-latest
-    env:
-      CARGO_REGISTRIES_SHROUDB_CRATESIO_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-      CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: Configure registry
-        run: |
-          mkdir -p ~/.cargo
-          cat > ~/.cargo/config.toml << 'EOF'
-          [source.crates-io]
-          replace-with = "shroudb-cratesio"
-
-          [source.shroudb-cratesio]
-          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-
-          [registries.shroudb-cratesio]
-          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-          credential-provider = ["cargo:token"]
-
-          [registries.shroudb]
-          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-          credential-provider = ["cargo:token"]
-          EOF
-      - name: Install cross
-        run: cargo install cross --quiet
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
       - name: Build
         run: |
           PACKAGES="-p ${{ inputs.server_package }}"
           [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
-          cross build --release --target aarch64-unknown-linux-musl $PACKAGES
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cargo install cross --quiet 2>/dev/null || true
+            cross build --release --target ${{ matrix.target }} $PACKAGES
+          else
+            cargo build --release --target ${{ matrix.target }} $PACKAGES
+          fi
       - name: Package
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          TARGET="aarch64-unknown-linux-musl"
           mkdir -p dist
-          cp "target/$TARGET/release/${{ inputs.server_binary }}" dist/
+          cp "target/${{ matrix.target }}/release/${{ inputs.server_binary }}" dist/
           BINARIES="${{ inputs.server_binary }}"
           if [ -n "${{ inputs.cli_binary }}" ]; then
-            cp "target/$TARGET/release/${{ inputs.cli_binary }}" dist/ 2>/dev/null || true
+            cp "target/${{ matrix.target }}/release/${{ inputs.cli_binary }}" dist/ 2>/dev/null || true
             [ -f "dist/${{ inputs.cli_binary }}" ] && BINARIES="$BINARIES ${{ inputs.cli_binary }}"
           fi
           cd dist
-          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${TARGET}.tar.gz" $BINARIES
+          tar czf "shroudb-${{ inputs.product }}-v${VERSION}-${{ matrix.target }}.tar.gz" $BINARIES
           rm -f $BINARIES
       - uses: actions/upload-artifact@v5
         with:
-          name: release-aarch64-unknown-linux-musl
+          name: release-${{ matrix.target }}
           path: dist/*.tar.gz
 
   # ─── Step 4: Docker ───
@@ -172,20 +124,18 @@ jobs:
     name: Docker
     if: "!contains(github.ref, '-rc')"
     needs: [check]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, railway]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v5
-      - name: Set up Docker Buildx
-        run: docker buildx create --use --name multiarch --driver docker-container
       - name: Build and push
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin 2>/dev/null || true
+          docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
 
-          # Build and push server image
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --build-arg REGISTRY_TOKEN="${{ secrets.REGISTRY_TOKEN }}" \
@@ -196,7 +146,6 @@ jobs:
             --tag "ghcr.io/shroudb/${{ inputs.product }}:latest" \
             --push .
 
-          # Build and push CLI image (if applicable)
           if [ -n "${{ inputs.docker_cli_target }}" ]; then
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
@@ -213,7 +162,7 @@ jobs:
   github-release:
     name: GitHub Release
     if: "!contains(github.ref, '-rc')"
-    needs: [build-x86, build-arm]
+    needs: [build]
     runs-on: [self-hosted, railway]
     permissions:
       contents: write
