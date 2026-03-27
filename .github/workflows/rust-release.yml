@@ -47,55 +47,24 @@ env:
   CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
 
 jobs:
-  # ─── Step 1: Checks ───
+  # ─── Step 1: Checks (self-hosted) ───
   check:
     name: Check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, railway]
     steps:
       - uses: actions/checkout@v5
-      - name: Configure registry
-        run: |
-          mkdir -p ~/.cargo
-          cat > ~/.cargo/config.toml << 'EOF'
-          [source.crates-io]
-          replace-with = "shroudb-cratesio"
-          [source.shroudb-cratesio]
-          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-          [registries.shroudb-cratesio]
-          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-          credential-provider = ["cargo:token"]
-          [registries.shroudb]
-          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-          credential-provider = ["cargo:token"]
-          EOF
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace -- --test-threads=1
-      - run: cargo install cargo-deny --quiet || true
       - run: cargo deny check || true
 
-  # ─── Step 2: Publish crates ───
+  # ─── Step 2: Publish crates (self-hosted) ───
   publish:
     name: Publish crates
     needs: [check]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, railway]
     steps:
       - uses: actions/checkout@v5
-      - name: Configure registry
-        run: |
-          mkdir -p ~/.cargo
-          cat > ~/.cargo/config.toml << 'EOF'
-          [source.crates-io]
-          replace-with = "shroudb-cratesio"
-          [source.shroudb-cratesio]
-          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-          [registries.shroudb-cratesio]
-          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
-          credential-provider = ["cargo:token"]
-          [registries.shroudb]
-          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-          credential-provider = ["cargo:token"]
-          EOF
       - name: Publish
         run: |
           IFS=',' read -ra CRATES <<< "${{ inputs.crates }}"
@@ -106,7 +75,7 @@ jobs:
             sleep 5
           done
 
-  # ─── Step 3: Build binaries ───
+  # ─── Step 3: Build binaries (ubuntu-latest — needs musl-tools, cross needs Docker) ───
   build:
     name: Build (${{ matrix.target }})
     needs: [check]
@@ -168,7 +137,7 @@ jobs:
           name: release-${{ matrix.target }}
           path: dist/*.tar.gz
 
-  # ─── Step 4: Docker ───
+  # ─── Step 4: Docker (ubuntu-latest — needs Docker daemon) ───
   docker:
     name: Docker
     if: "!contains(github.ref, '-rc')"
@@ -182,13 +151,17 @@ jobs:
       - name: Set up Docker Buildx
         run: docker buildx create --use --name multiarch --driver docker-container
       - name: Build and push
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin 2>/dev/null || true
 
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            --build-arg REGISTRY_TOKEN="${{ secrets.REGISTRY_TOKEN }}" \
+            --secret id=registry_token,env=REGISTRY_TOKEN \
+            --provenance=true \
+            --sbom=true \
             --target "${{ inputs.docker_server_target }}" \
             --tag "shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
             --tag "shroudb/${{ inputs.product }}:latest" \
@@ -199,7 +172,9 @@ jobs:
           if [ -n "${{ inputs.docker_cli_target }}" ]; then
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
-              --build-arg REGISTRY_TOKEN="${{ secrets.REGISTRY_TOKEN }}" \
+              --secret id=registry_token,env=REGISTRY_TOKEN \
+              --provenance=true \
+              --sbom=true \
               --target "${{ inputs.docker_cli_target }}" \
               --tag "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
               --tag "shroudb/${{ inputs.product }}-cli:latest" \
@@ -230,12 +205,12 @@ jobs:
             --repo "${{ github.repository }}" \
             --generate-notes
 
-  # ─── Step 6: Homebrew ───
+  # ─── Step 6: Homebrew (self-hosted) ───
   homebrew:
     name: Update Homebrew
     if: "!contains(github.ref, '-rc')"
     needs: [github-release]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, railway]
     steps:
       - name: Trigger formula update
         env:
@@ -247,12 +222,12 @@ jobs:
             -f "client_payload[formula]=shroudb-${{ inputs.product }}" \
             -f "client_payload[version]=$VERSION"
 
-  # ─── Step 7: Codegen ───
+  # ─── Step 7: Codegen (self-hosted) ───
   codegen:
     name: Trigger SDK codegen
     if: "!contains(github.ref, '-rc')"
     needs: [publish]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, railway]
     steps:
       - name: Dispatch codegen
         env:
