@@ -20,29 +20,90 @@ env:
 jobs:
   fmt:
     name: Format
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
       - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: Test
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: cargo test --workspace -- --test-threads=1
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
+      - run: cargo test --workspace
 
   deny:
     name: Dependency Check
     if: ${{ inputs.deny }}
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
+      - run: cargo install cargo-deny --quiet
       - run: cargo deny check

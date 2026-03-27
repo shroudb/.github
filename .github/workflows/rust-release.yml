@@ -50,21 +50,52 @@ jobs:
   # ─── Step 1: Checks ───
   check:
     name: Check
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace -- --test-threads=1
+      - run: cargo install cargo-deny --quiet || true
       - run: cargo deny check || true
 
   # ─── Step 2: Publish crates ───
   publish:
     name: Publish crates
     needs: [check]
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
       - name: Publish
         run: |
           IFS=',' read -ra CRATES <<< "${{ inputs.crates }}"
@@ -79,7 +110,7 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     needs: [check]
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
@@ -89,6 +120,24 @@ jobs:
             use_cross: true
     steps:
       - uses: actions/checkout@v5
+      - name: Configure registry
+        run: |
+          mkdir -p ~/.cargo
+          cat > ~/.cargo/config.toml << 'EOF'
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          EOF
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Install target
         run: rustup target add ${{ matrix.target }}
       - name: Build
@@ -96,7 +145,7 @@ jobs:
           PACKAGES="-p ${{ inputs.server_package }}"
           [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
           if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cargo install cross --quiet 2>/dev/null || true
+            cargo install cross --quiet
             cross build --release --target ${{ matrix.target }} $PACKAGES
           else
             cargo build --release --target ${{ matrix.target }} $PACKAGES
@@ -124,17 +173,18 @@ jobs:
     name: Docker
     if: "!contains(github.ref, '-rc')"
     needs: [check]
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v5
+      - name: Set up Docker Buildx
+        run: docker buildx create --use --name multiarch --driver docker-container
       - name: Build and push
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin 2>/dev/null || true
-          docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
 
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -163,7 +213,7 @@ jobs:
     name: GitHub Release
     if: "!contains(github.ref, '-rc')"
     needs: [build]
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -185,7 +235,7 @@ jobs:
     name: Update Homebrew
     if: "!contains(github.ref, '-rc')"
     needs: [github-release]
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - name: Trigger formula update
         env:
@@ -202,7 +252,7 @@ jobs:
     name: Trigger SDK codegen
     if: "!contains(github.ref, '-rc')"
     needs: [publish]
-    runs-on: [self-hosted, railway]
+    runs-on: ubuntu-latest
     steps:
       - name: Dispatch codegen
         env:
