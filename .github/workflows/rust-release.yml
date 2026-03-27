@@ -148,6 +148,7 @@ jobs:
           # Build and push server image
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
+            --build-arg REGISTRY_TOKEN="${{ secrets.REGISTRY_TOKEN }}" \
             --target "${{ inputs.docker_server_target }}" \
             --tag "shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
             --tag "shroudb/${{ inputs.product }}:latest" \
@@ -159,6 +160,7 @@ jobs:
           if [ -n "${{ inputs.docker_cli_target }}" ]; then
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
+              --build-arg REGISTRY_TOKEN="${{ secrets.REGISTRY_TOKEN }}" \
               --target "${{ inputs.docker_cli_target }}" \
               --tag "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
               --tag "shroudb/${{ inputs.product }}-cli:latest" \
