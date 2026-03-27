@@ -183,20 +183,13 @@ jobs:
           path: dist/*.tar.gz
 
   docker-rc:
-    name: Docker RC (${{ matrix.image }})
+    name: Docker RC
     if: contains(github.ref, '-rc')
     needs: [version]
     runs-on: [self-hosted, railway]
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - image: ${{ inputs.product }}
-            target: ${{ inputs.docker_server_target }}
-          - image: ${{ inputs.product }}-cli
-            target: ${{ inputs.docker_cli_target }}
     steps:
       - uses: actions/checkout@v5
       - name: Build and push
@@ -205,25 +198,23 @@ jobs:
           docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            --target "${{ matrix.target }}" \
-            --tag "ghcr.io/shroudb/${{ matrix.image }}:${{ github.ref_name }}" \
+            --target "${{ inputs.docker_server_target }}" \
+            --tag "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
+            --push .
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --target "${{ inputs.docker_cli_target }}" \
+            --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
             --push .
 
   docker-release:
-    name: Docker Release (${{ matrix.image }})
+    name: Docker Release
     if: "!contains(github.ref, '-rc')"
     needs: [version]
     runs-on: [self-hosted, railway]
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - image: ${{ inputs.product }}
-            target: ${{ inputs.docker_server_target }}
-          - image: ${{ inputs.product }}-cli
-            target: ${{ inputs.docker_cli_target }}
     steps:
       - uses: actions/checkout@v5
       - name: Build and push
@@ -233,11 +224,19 @@ jobs:
           docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            --target "${{ matrix.target }}" \
-            --tag "shroudb/${{ matrix.image }}:${{ github.ref_name }}" \
-            --tag "shroudb/${{ matrix.image }}:latest" \
-            --tag "ghcr.io/shroudb/${{ matrix.image }}:${{ github.ref_name }}" \
-            --tag "ghcr.io/shroudb/${{ matrix.image }}:latest" \
+            --target "${{ inputs.docker_server_target }}" \
+            --tag "shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
+            --tag "shroudb/${{ inputs.product }}:latest" \
+            --tag "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
+            --tag "ghcr.io/shroudb/${{ inputs.product }}:latest" \
+            --push .
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --target "${{ inputs.docker_cli_target }}" \
+            --tag "shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
+            --tag "shroudb/${{ inputs.product }}-cli:latest" \
+            --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
+            --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:latest" \
             --push .
 
   github-release:
