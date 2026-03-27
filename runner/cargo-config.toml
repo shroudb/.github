@@ -6,10 +6,8 @@ registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
 
 [registries.shroudb-cratesio]
 index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+credential-provider = ["cargo:token"]
 
 [registries.shroudb]
 index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-
-# Tokens are injected at runtime via environment variables:
-#   CARGO_REGISTRIES_SHROUDB_CRATESIO_TOKEN=<token>
-#   CARGO_REGISTRIES_SHROUDB_TOKEN=<token>
+credential-provider = ["cargo:token"]
