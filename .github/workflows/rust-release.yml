@@ -4,38 +4,30 @@ on:
   workflow_call:
     inputs:
       product:
-        description: "Product name (e.g., mint, transit, auth)"
         type: string
         required: true
       server_package:
-        description: "Server crate package name"
         type: string
         required: true
       server_binary:
-        description: "Server binary name"
         type: string
         required: true
       cli_package:
-        description: "CLI crate package name (empty if no CLI)"
         type: string
         required: false
         default: ""
       cli_binary:
-        description: "CLI binary name (empty if no CLI)"
         type: string
         required: false
         default: ""
       docker_server_target:
-        description: "Dockerfile target for server"
         type: string
         required: true
       docker_cli_target:
-        description: "Dockerfile target for CLI (empty if no CLI)"
         type: string
         required: false
         default: ""
       crates:
-        description: "Comma-separated crate names to publish in order"
         type: string
         required: true
     secrets:
@@ -50,33 +42,22 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+  CARGO_HOME: /tmp/cargo-${{ github.run_id }}
+  RUSTUP_HOME: /tmp/rustup-${{ github.run_id }}
 
 jobs:
-  version:
-    name: Set version from tag
-    runs-on: [self-hosted, railway]
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - id: version
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Release version: $VERSION"
-
-  publish:
-    name: Publish crates
-    needs: [version]
+  # ─── Step 1: Checks must pass before anything else ───
+  check:
+    name: Check
     runs-on: [self-hosted, railway]
     steps:
       - uses: actions/checkout@v5
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-        env:
-          CARGO_HOME: /tmp/cargo-${{ github.run_id }}
-          RUSTUP_HOME: /tmp/rustup-${{ github.run_id }}
       - name: Configure registry
         run: |
           mkdir -p "$CARGO_HOME"
@@ -97,27 +78,61 @@ jobs:
           credential-provider = ["cargo:token"]
           token = "${{ secrets.REGISTRY_TOKEN }}"
           EOF
-        env:
-          CARGO_HOME: /tmp/cargo-${{ github.run_id }}
-      - name: Patch version and publish
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
 
+  # ─── Step 2: Publish crates (only after checks pass) ───
+  publish:
+    name: Publish crates
+    needs: [check]
+    runs-on: [self-hosted, railway]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+      - name: Configure registry
+        run: |
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" << EOF
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          token = "${{ secrets.REGISTRY_TOKEN }}"
+
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          token = "${{ secrets.REGISTRY_TOKEN }}"
+          EOF
+      - name: Publish
+        run: |
           IFS=',' read -ra CRATES <<< "${{ inputs.crates }}"
           for crate in "${CRATES[@]}"; do
             crate=$(echo "$crate" | xargs)
-            echo "Publishing $crate v$VERSION..."
-            cargo publish -p "$crate" --registry shroudb --allow-dirty 2>&1 || true
-            sleep 3
+            echo "Publishing $crate..."
+            cargo publish -p "$crate" --registry shroudb --allow-dirty 2>&1
+            sleep 5
           done
-        env:
-          CARGO_HOME: /tmp/cargo-${{ github.run_id }}
-          RUSTUP_HOME: /tmp/rustup-${{ github.run_id }}
 
+  # ─── Step 3: Build binaries (only after checks pass) ───
   build:
     name: Build (${{ matrix.target }})
-    needs: [version]
+    needs: [check]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -133,8 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install Rust
-        run: |
-          rustup target add ${{ matrix.target }}
+        run: rustup target add ${{ matrix.target }}
       - name: Configure registry
         run: |
           mkdir -p ~/.cargo
@@ -161,13 +175,13 @@ jobs:
       - name: Install cross (Linux aarch64)
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin
-      - name: Build server (cargo)
+      - name: Build (cargo)
         if: matrix.target != 'aarch64-unknown-linux-musl'
         run: |
           PACKAGES="-p ${{ inputs.server_package }}"
           [ -n "${{ inputs.cli_package }}" ] && PACKAGES="$PACKAGES -p ${{ inputs.cli_package }}"
           cargo build --release --target ${{ matrix.target }} $PACKAGES
-      - name: Build server (cross)
+      - name: Build (cross)
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: |
           PACKAGES="-p ${{ inputs.server_package }}"
@@ -175,7 +189,7 @@ jobs:
           cross build --release --target ${{ matrix.target }} $PACKAGES
       - name: Package
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
+          VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/${{ inputs.server_binary }}" dist/
           BINARIES="${{ inputs.server_binary }}"
@@ -191,37 +205,11 @@ jobs:
           name: release-${{ matrix.target }}
           path: dist/*.tar.gz
 
-  docker-rc:
-    name: Docker RC
-    if: contains(github.ref, '-rc')
-    needs: [version]
-    runs-on: [self-hosted, railway]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v5
-      - name: Build and push
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --target "${{ inputs.docker_server_target }}" \
-            --tag "ghcr.io/shroudb/${{ inputs.product }}:${{ github.ref_name }}" \
-            --push .
-          if [ -n "${{ inputs.docker_cli_target }}" ]; then
-            docker buildx build \
-              --platform linux/amd64,linux/arm64 \
-              --target "${{ inputs.docker_cli_target }}" \
-              --tag "ghcr.io/shroudb/${{ inputs.product }}-cli:${{ github.ref_name }}" \
-              --push .
-          fi
-
-  docker-release:
-    name: Docker Release
+  # ─── Step 4: Docker (only after checks pass) ───
+  docker:
+    name: Docker
     if: "!contains(github.ref, '-rc')"
-    needs: [version]
+    needs: [check]
     runs-on: [self-hosted, railway]
     permissions:
       contents: read
@@ -231,7 +219,7 @@ jobs:
       - name: Build and push
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin 2>/dev/null || true
           docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -252,6 +240,7 @@ jobs:
               --push .
           fi
 
+  # ─── Step 5: GitHub Release (only after build completes) ───
   github-release:
     name: GitHub Release
     if: "!contains(github.ref, '-rc')"
@@ -273,6 +262,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --generate-notes
 
+  # ─── Step 6: Homebrew (only after GitHub release) ───
   homebrew:
     name: Update Homebrew
     if: "!contains(github.ref, '-rc')"
@@ -289,6 +279,7 @@ jobs:
             -f "client_payload[formula]=shroudb-${{ inputs.product }}" \
             -f "client_payload[version]=$VERSION"
 
+  # ─── Step 7: Codegen (only after publish completes) ───
   codegen:
     name: Trigger SDK codegen
     if: "!contains(github.ref, '-rc')"
