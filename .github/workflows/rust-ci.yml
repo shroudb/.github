@@ -27,6 +27,7 @@ jobs:
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          export PATH="$CARGO_HOME/bin:$PATH"
           rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - run: cargo fmt --all -- --check
@@ -39,6 +40,7 @@ jobs:
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          export PATH="$CARGO_HOME/bin:$PATH"
           rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
@@ -74,6 +76,7 @@ jobs:
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          export PATH="$CARGO_HOME/bin:$PATH"
           rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
@@ -110,6 +113,7 @@ jobs:
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          export PATH="$CARGO_HOME/bin:$PATH"
           rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
