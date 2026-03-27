@@ -30,21 +30,7 @@ jobs:
           export PATH="$CARGO_HOME/bin:$PATH"
           rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-      - run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy
-    runs-on: [self-hosted, railway]
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-          export PATH="$CARGO_HOME/bin:$PATH"
-          rustup component add rustfmt clippy
-          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
-        if: env.REGISTRY_TOKEN != ''
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
@@ -59,7 +45,42 @@ jobs:
           [registries.shroudb-cratesio]
           index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
           credential-provider = ["cargo:token"]
-          token = "${{ secrets.REGISTRY_TOKEN }}"
+          token = "${REGISTRY_TOKEN}"
+
+          [registries.shroudb]
+          index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+          credential-provider = ["cargo:token"]
+          token = "${REGISTRY_TOKEN}"
+          EOF
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: [self-hosted, railway]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          export PATH="$CARGO_HOME/bin:$PATH"
+          rustup component add rustfmt clippy
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+      - name: Configure registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          mkdir -p "$CARGO_HOME"
+          cat > "$CARGO_HOME/config.toml" << EOF
+          [source.crates-io]
+          replace-with = "shroudb-cratesio"
+
+          [source.shroudb-cratesio]
+          registry = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+
+          [registries.shroudb-cratesio]
+          index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
+          credential-provider = ["cargo:token"]
+          token = "${REGISTRY_TOKEN}"
 
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
@@ -80,7 +101,6 @@ jobs:
           rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
-        if: env.REGISTRY_TOKEN != ''
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
@@ -95,7 +115,7 @@ jobs:
           [registries.shroudb-cratesio]
           index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
           credential-provider = ["cargo:token"]
-          token = "${{ secrets.REGISTRY_TOKEN }}"
+          token = "${REGISTRY_TOKEN}"
 
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
@@ -117,7 +137,6 @@ jobs:
           rustup component add rustfmt clippy
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Configure registry
-        if: env.REGISTRY_TOKEN != ''
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
@@ -132,13 +151,12 @@ jobs:
           [registries.shroudb-cratesio]
           index = "sparse+https://crates.shroudb.dev/api/v1/cratesio/"
           credential-provider = ["cargo:token"]
-          token = "${{ secrets.REGISTRY_TOKEN }}"
+          token = "${REGISTRY_TOKEN}"
 
           [registries.shroudb]
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
           token = "${REGISTRY_TOKEN}"
           EOF
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --quiet 2>/dev/null || true
+      - run: cargo install cargo-deny --quiet || true
       - run: cargo deny check
