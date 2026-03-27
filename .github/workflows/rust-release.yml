@@ -82,6 +82,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - run: cargo install cargo-deny --quiet || true
+      - run: cargo deny check || true
 
   # ─── Step 2: Publish crates (only after checks pass) ───
   publish:
