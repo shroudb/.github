@@ -122,7 +122,7 @@ jobs:
           credential-provider = ["cargo:token"]
           token = "${REGISTRY_TOKEN}"
           EOF
-      - run: cargo test --workspace
+      - run: cargo test --workspace -- --test-threads=4
 
   deny:
     name: Dependency Check
