@@ -204,9 +204,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" artifacts/*.tar.gz \
-            --repo "${{ github.repository }}" \
-            --generate-notes
+          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" &>/dev/null; then
+            echo "Release ${{ github.ref_name }} already exists, uploading assets"
+            gh release upload "${{ github.ref_name }}" artifacts/*.tar.gz \
+              --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "${{ github.ref_name }}" artifacts/*.tar.gz \
+              --repo "${{ github.repository }}" \
+              --generate-notes
+          fi
 
   # ─── Step 5: Homebrew ───
   homebrew:
