@@ -82,14 +82,22 @@ jobs:
   # ─── Step 2: Build binaries ───
   build:
     name: Build (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
             use_cross: false
           - target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
             use_cross: true
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            use_cross: false
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            use_cross: false
     steps:
       - uses: actions/checkout@v5
       - name: Configure registry
@@ -226,9 +234,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          PRODUCT="${{ inputs.product }}"
+          if [ "$PRODUCT" = "shroudb" ]; then
+            FORMULA="shroudb"
+          else
+            FORMULA="shroudb-${PRODUCT}"
+          fi
           gh api repos/shroudb/homebrew-tap/dispatches \
             -f event_type=formula-update \
-            -f "client_payload[formula]=shroudb-${{ inputs.product }}" \
+            -f "client_payload[formula]=$FORMULA" \
             -f "client_payload[version]=$VERSION"
 
   # ─── Step 6: Codegen ───
