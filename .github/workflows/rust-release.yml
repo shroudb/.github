@@ -245,20 +245,9 @@ jobs:
             -f "client_payload[formula]=$FORMULA" \
             -f "client_payload[version]=$VERSION"
 
-  # ─── Step 6: Codegen ───
-  codegen:
-    name: Trigger SDK codegen
-    if: "!contains(github.ref, '-rc')"
-    needs: [publish]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch codegen
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          gh api repos/shroudb/shroudb-codegen/dispatches \
-            -f event_type=engine-release \
-            -f "client_payload[engine]=${{ inputs.product }}" \
-            -f "client_payload[version]=$VERSION" \
-            -f "client_payload[spec_repo]=${{ github.repository }}"
+  # Codegen is NOT triggered from here. Per-engine releases would regenerate
+  # the SDK against a stale Moat composite spec (which still pins the old
+  # engine version) and publish under the engine's tag version, poisoning the
+  # SDK's semver on the registry. Codegen is triggered only by Moat's release
+  # workflow — Moat's composite spec is the single input for the unified SDK,
+  # and its bump always follows an engine bump.
