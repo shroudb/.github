@@ -52,6 +52,8 @@ jobs:
     name: Publish crates
     runs-on: self-hosted
     steps:
+      - name: Ensure cargo on PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |
@@ -68,7 +70,6 @@ jobs:
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
           EOF
-      - uses: Swatinem/rust-cache@v2
       - name: Publish
         run: |
           IFS=',' read -ra CRATES <<< "${{ inputs.crates }}"
@@ -99,6 +100,8 @@ jobs:
             runner: macos-14
             use_cross: false
     steps:
+      - name: Ensure cargo on PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |
@@ -115,13 +118,16 @@ jobs:
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
           EOF
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache cargo (GitHub-hosted only)
+        if: matrix.runner != 'self-hosted'
+        uses: Swatinem/rust-cache@v2
         with:
           shared-key: "release-${{ matrix.target }}"
-      - name: Install musl tools
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+      - name: Install musl tools (GitHub-hosted only)
+        if: matrix.target == 'x86_64-unknown-linux-musl' && matrix.runner != 'self-hosted'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Install target
+        if: matrix.runner != 'self-hosted' || matrix.use_cross == false
         run: rustup target add ${{ matrix.target }}
       - name: Build
         run: |
