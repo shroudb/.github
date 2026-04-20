@@ -50,7 +50,7 @@ jobs:
   # ─── Step 1: Publish crates ───
   publish:
     name: Publish crates
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v5
       - name: Configure registry
@@ -87,10 +87,10 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            runner: ubuntu-latest
+            runner: self-hosted
             use_cross: false
           - target: aarch64-unknown-linux-musl
-            runner: ubuntu-latest
+            runner: self-hosted
             use_cross: true
           - target: x86_64-apple-darwin
             runner: macos-14
@@ -155,13 +155,13 @@ jobs:
   docker:
     name: Docker
     if: "!contains(github.ref, '-rc')"
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v5
       - name: Set up Docker Buildx
-        run: docker buildx create --use --name multiarch --driver docker-container
+        run: docker buildx use multiarch 2>/dev/null || docker buildx create --use --name multiarch --driver docker-container
       - name: Build and push
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}

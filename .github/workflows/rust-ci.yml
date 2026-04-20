@@ -20,7 +20,7 @@ env:
 jobs:
   ci:
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v5
       - name: Configure registry
@@ -46,7 +46,7 @@ jobs:
   deny:
     name: Dependency Check
     if: ${{ inputs.deny }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v5
       - name: Configure registry
