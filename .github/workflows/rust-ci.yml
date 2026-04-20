@@ -45,8 +45,16 @@ jobs:
           EOF
       - name: Sanity
         run: |
+          echo "user=$(id -un)  home=$HOME  pwd=$(pwd)"
           echo "PATH=$PATH"
-          which cargo && cargo --version
+          echo "--- /home/nlucas/.cargo/bin ---"
+          ls -la /home/nlucas/.cargo/bin/ 2>&1 | head -20
+          echo "--- resolve cargo ---"
+          readlink -f /home/nlucas/.cargo/bin/cargo 2>&1 || true
+          test -x /home/nlucas/.cargo/bin/cargo && echo "cargo is executable"
+          test -x /home/nlucas/.cargo/bin/rustup && echo "rustup is executable"
+          which cargo || echo "PATH search for cargo failed"
+          /home/nlucas/.cargo/bin/cargo --version 2>&1 || echo "direct invocation failed: exit $?"
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
