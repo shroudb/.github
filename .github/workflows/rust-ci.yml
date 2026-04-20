@@ -20,10 +20,6 @@ env:
   # runner's systemd .env sets this process-wide but per-step shells were
   # not inheriting it reliably. Hardcoded to the /home/nlucas runner user.
   PATH: /home/nlucas/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-  # Point cargo at the host's central target cache so repeated builds
-  # across jobs share artifacts. Directory must exist and be writable
-  # by the runner user (provisioned out-of-band on gamed).
-  CARGO_TARGET_DIR: /opt/cargo-cache
 
 jobs:
   ci:
