@@ -29,7 +29,13 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Ensure cargo on PATH
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        run: |
+          echo "HOME='$HOME'  USER='$USER'  GITHUB_PATH='$GITHUB_PATH'"
+          echo "Initial PATH: $PATH"
+          ls -la /home/nlucas/.cargo/bin/cargo 2>&1 || echo "::warning::cargo binary missing at /home/nlucas/.cargo/bin/cargo"
+          echo "/home/nlucas/.cargo/bin" >> "$GITHUB_PATH"
+          echo "GITHUB_PATH file now contains:"
+          cat "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |
@@ -56,7 +62,13 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Ensure cargo on PATH
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        run: |
+          echo "HOME='$HOME'  USER='$USER'  GITHUB_PATH='$GITHUB_PATH'"
+          echo "Initial PATH: $PATH"
+          ls -la /home/nlucas/.cargo/bin/cargo 2>&1 || echo "::warning::cargo binary missing at /home/nlucas/.cargo/bin/cargo"
+          echo "/home/nlucas/.cargo/bin" >> "$GITHUB_PATH"
+          echo "GITHUB_PATH file now contains:"
+          cat "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |
