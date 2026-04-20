@@ -81,8 +81,14 @@ echo "==> Registering QEMU binfmt handlers"
 sudo docker run --privileged --rm tonistiigi/binfmt --install all >/dev/null
 
 # ── Rust ───────────────────────────────────────────────────────────
-if ! command -v rustup >/dev/null 2>&1; then
-  echo "==> Installing rustup"
+# `command -v rustup` is not enough — ~/.cargo/bin/rustup can exist as
+# a dangling symlink (all rust tools are hardlinks/symlinks to rustup,
+# so if the real binary is missing every tool breaks silently with
+# "No such file or directory" at PATH-resolution time). Force a real
+# install if the binary isn't actually runnable.
+if ! rustup --version >/dev/null 2>&1; then
+  echo "==> Installing rustup (clean install — prior state may be broken)"
+  rm -rf "$HOME/.cargo" "$HOME/.rustup"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain "$RUST_TOOLCHAIN" --profile minimal
 fi

@@ -45,15 +45,22 @@ env:
   RUSTFLAGS: "-D warnings"
   CARGO_REGISTRIES_SHROUDB_CRATESIO_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
   CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+  # Self-hosted runner toolchain path. Harmless on macOS-hosted build
+  # rows because bash only uses PATH to resolve commands — an extra
+  # Linux-style dir on the front is a no-op there.
+  PATH: /home/nlucas/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  # NOTE: CARGO_TARGET_DIR lives on Linux-only jobs (publish). Release
+  # build matrix intentionally leaves it unset so macOS-hosted rows fall
+  # back to ./target — /opt/cargo-cache does not exist there.
 
 jobs:
   # ─── Step 1: Publish crates ───
   publish:
     name: Publish crates
     runs-on: self-hosted
+    env:
+      CARGO_TARGET_DIR: /opt/cargo-cache
     steps:
-      - name: Ensure cargo on PATH
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |
@@ -100,8 +107,6 @@ jobs:
             runner: macos-14
             use_cross: false
     steps:
-      - name: Ensure cargo on PATH
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |

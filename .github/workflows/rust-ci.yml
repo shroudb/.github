@@ -16,11 +16,14 @@ env:
   RUSTFLAGS: "-D warnings"
   CARGO_REGISTRIES_SHROUDB_CRATESIO_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
   CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-  # Force cargo/rustup onto every step's PATH. The runner's systemd
-  # .env does set this for the runner process, but the GITHUB_PATH
-  # file-based mechanism was not reliably propagating to step shells.
-  # Hardcoded to /home/nlucas because that's the runner user on gamed.
+  # Workflow-level PATH so every step shell can find cargo/rustup. The
+  # runner's systemd .env sets this process-wide but per-step shells were
+  # not inheriting it reliably. Hardcoded to the /home/nlucas runner user.
   PATH: /home/nlucas/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  # Point cargo at the host's central target cache so repeated builds
+  # across jobs share artifacts. Directory must exist and be writable
+  # by the runner user (provisioned out-of-band on gamed).
+  CARGO_TARGET_DIR: /opt/cargo-cache
 
 jobs:
   ci:
@@ -43,18 +46,6 @@ jobs:
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
           EOF
-      - name: Sanity
-        run: |
-          echo "user=$(id -un)  home=$HOME  pwd=$(pwd)"
-          echo "PATH=$PATH"
-          echo "--- /home/nlucas/.cargo/bin ---"
-          ls -la /home/nlucas/.cargo/bin/ 2>&1 | head -20
-          echo "--- resolve cargo ---"
-          readlink -f /home/nlucas/.cargo/bin/cargo 2>&1 || true
-          test -x /home/nlucas/.cargo/bin/cargo && echo "cargo is executable"
-          test -x /home/nlucas/.cargo/bin/rustup && echo "rustup is executable"
-          which cargo || echo "PATH search for cargo failed"
-          /home/nlucas/.cargo/bin/cargo --version 2>&1 || echo "direct invocation failed: exit $?"
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
