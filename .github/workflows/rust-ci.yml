@@ -16,26 +16,17 @@ env:
   RUSTFLAGS: "-D warnings"
   CARGO_REGISTRIES_SHROUDB_CRATESIO_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
   CARGO_REGISTRIES_SHROUDB_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-
-# Runners are self-hosted; Rust + rustfmt/clippy/musl target + cargo-deny
-# are pre-provisioned by .github/runner/setup.sh. Each job prepends
-# ~/.cargo/bin to PATH so cargo/rustup resolve reliably from every step's
-# shell, and writes ~/.cargo/config.toml so the private shroudb registry
-# is reachable.
+  # Force cargo/rustup onto every step's PATH. The runner's systemd
+  # .env does set this for the runner process, but the GITHUB_PATH
+  # file-based mechanism was not reliably propagating to step shells.
+  # Hardcoded to /home/nlucas because that's the runner user on gamed.
+  PATH: /home/nlucas/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 jobs:
   ci:
     name: CI
     runs-on: self-hosted
     steps:
-      - name: Ensure cargo on PATH
-        run: |
-          echo "HOME='$HOME'  USER='$USER'  GITHUB_PATH='$GITHUB_PATH'"
-          echo "Initial PATH: $PATH"
-          ls -la /home/nlucas/.cargo/bin/cargo 2>&1 || echo "::warning::cargo binary missing at /home/nlucas/.cargo/bin/cargo"
-          echo "/home/nlucas/.cargo/bin" >> "$GITHUB_PATH"
-          echo "GITHUB_PATH file now contains:"
-          cat "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |
@@ -52,6 +43,10 @@ jobs:
           index = "sparse+https://crates.shroudb.dev/api/v1/crates/"
           credential-provider = ["cargo:token"]
           EOF
+      - name: Sanity
+        run: |
+          echo "PATH=$PATH"
+          which cargo && cargo --version
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
@@ -61,14 +56,6 @@ jobs:
     if: ${{ inputs.deny }}
     runs-on: self-hosted
     steps:
-      - name: Ensure cargo on PATH
-        run: |
-          echo "HOME='$HOME'  USER='$USER'  GITHUB_PATH='$GITHUB_PATH'"
-          echo "Initial PATH: $PATH"
-          ls -la /home/nlucas/.cargo/bin/cargo 2>&1 || echo "::warning::cargo binary missing at /home/nlucas/.cargo/bin/cargo"
-          echo "/home/nlucas/.cargo/bin" >> "$GITHUB_PATH"
-          echo "GITHUB_PATH file now contains:"
-          cat "$GITHUB_PATH"
       - uses: actions/checkout@v5
       - name: Configure registry
         run: |
